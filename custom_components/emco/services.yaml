@@ -1,0 +1,5 @@
+send_serial_data:
+  description: Open front or communal door by serial communication
+
+ev_call:
+  description: Call for elevataor by tcp protocol

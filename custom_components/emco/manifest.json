@@ -1,0 +1,17 @@
+{
+  "domain": "emco",
+  "name": "emco",
+  "codeowners": [
+    "@pcjoih"
+  ],
+  "config_flow": false,
+  "dependencies": [],
+  "documentation": "https://github.com/pcjoih/emco",
+  "iot_class": "local_push",
+  "requirements": [
+    "pyserial>=3.5",
+    "pyserial_asyncio>=0.6"
+  ],
+  "version": "1.0.0",
+  "issue_tracker": "https://github.com/pcjoih/emco/issues"
+}
