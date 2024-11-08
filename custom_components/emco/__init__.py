@@ -26,12 +26,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType):
         """Handle the serial data command service asynchronously."""
         lock_name = call.data.get("lock_name")
         _LOGGER.info(f"Serial command received for {lock_name}, sending data to serial port.")
-        await async_send_serial_data(lock_name)
+        await async_send_serial_data(hass, lock_name)
     
     # Elevator call service
     async def async_handle_ev_call(call):
         """Handle the elevator call and update the sensor states."""
-        _LOGGER.info(f"Handle ev call, sending data to tcp.") 
+        #_LOGGER.info(f"Handle ev call, sending data to tcp.") 
         await async_ev_call(hass)
 
     hass.services.async_register(DOMAIN, "send_serial_data", async_handle_serial_command)
@@ -84,8 +84,7 @@ async def handle_serial_data(hass: HomeAssistant, line, ser):
 
     if WTOV['idleTOfront_ring'] in line:
         data = "FRONT_ON"
-        _LOGGER.info(f"Front on - handle_serial_data")
-        await loop.run_in_executor(None, functools.partial(ser.write, VTOW['front_ringTOav']))
+        _LOGGER.info(f"Front on - handle_serial_data")        
     elif WTOV['front_ringTOidle'] in line:
         data = "FRONT_OFF"
         _LOGGER.info(f"Front off - handle_serial_data")
@@ -94,37 +93,37 @@ async def handle_serial_data(hass: HomeAssistant, line, ser):
         _LOGGER.info(f"Communal off - handle_serial_data")
     elif WTOV['idleTOcomm_ring'] in line:
         data = "COMMUNAL_ON"
-        _LOGGER.info(f"Communal on - handle_serial_data")
-        await loop.run_in_executor(None, functools.partial(ser.write, VTOW['comm_ringTOav']))
+        _LOGGER.info(f"Communal on - handle_serial_data")        
 
     if data:
         await loop.run_in_executor(None, ser.flush)  # Wait for data to be sent
-        _LOGGER.info(f"Sent command to serial port: {data}")
-    
+            
     return data
 
 async def update_binary_sensor_state(hass: HomeAssistant, data: str, ser):
     """Update the binary sensor state in Home Assistant."""
     loop = asyncio.get_running_loop()
     _LOGGER.info(f"Data received: {data}")
-    communal_sensor_entity = self._hass.data[DOMAIN].get("communal_sensor")
-    front_sensor_entity = self._hass.data[DOMAIN].get("front_sensor")
+    communal_sensor_entity = hass.data[DOMAIN].get("communal_sensor")
+    front_sensor_entity = hass.data[DOMAIN].get("front_sensor")
     if data == "COMMUNAL_ON":
         communal_sensor_entity.set_state(True)        
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['comm_avTOidle']))
         communal_sensor_entity.set_state(False)        
     elif data == "COMMUNAL_OFF":
         communal_sensor_entity.set_state(False)        
     elif data == "FRONT_ON":
         front_sensor_entity.set_state(True)
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['front_ringTOidle']))
         front_sensor_entity.set_state(False)
     elif data == "FRONT_OFF":
         front_sensor_entity.set_state(False)
+    
+    await loop.run_in_executor(None, ser.flush)
 
-async def async_send_serial_data(lock_name: str):
+async def async_send_serial_data(hass, lock_name: str):
     """Send data to the serial port asynchronously based on the button name using pyserial."""
     try:
         ser = serial.Serial(
@@ -136,7 +135,7 @@ async def async_send_serial_data(lock_name: str):
             timeout=1
         )
         
-        await send_and_update_state(ser, lock_name)
+        await send_and_update_state(hass, ser, lock_name)
         
         await asyncio.sleep(0)  # 비동기 대기 (다른 작업을 루프에 허용)
 
@@ -145,14 +144,16 @@ async def async_send_serial_data(lock_name: str):
     finally:
         ser.close()
 
-async def send_and_update_state(ser, lock_name: str):
+async def send_and_update_state(hass, ser, lock_name: str):
     """Send specific data to the serial port and update sensor state asynchronously."""
     loop = asyncio.get_running_loop()  
-    communal_sensor_entity = self._hass.data[DOMAIN].get("communal_sensor")
-    front_sensor_entity = self._hass.data[DOMAIN].get("front_sensor")  
+    communal_sensor_entity = hass.data[DOMAIN].get("communal_sensor")
+    front_sensor_entity = hass.data[DOMAIN].get("front_sensor")  
 
     if lock_name == "communal_open":        
         # 시리얼 포트로 데이터 쓰기 (비동기적으로 실행)
+        await loop.run_in_executor(None, functools.partial(ser.write, VTOW['comm_ringTOav']))
+        await asyncio.sleep(0.5)
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['comm_avTOunlock']))
         await asyncio.sleep(5)  # 5초 대기
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['comm_avTOidle']))
@@ -160,15 +161,24 @@ async def send_and_update_state(ser, lock_name: str):
 
     elif lock_name == "front_open":
         # 시리얼 포트로 데이터 쓰기 (비동기적으로 실행)
+        _LOGGER.info(f"Recieved Front_open command. Send in asyncio write.")
+        await loop.run_in_executor(None, functools.partial(ser.write, VTOW['front_ringTOav']))
+        await asyncio.sleep(0.5)
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['front_ringTOunlock']))
         await asyncio.sleep(5)  # 5초 대기
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['front_ringTOidle']))
         front_sensor_entity.set_state(False)
 
     elif lock_name == "front_start":
+        _LOGGER.info(f"Recieved Front_start command. Send in asyncio write.")
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['idleTOav']))
+        await asyncio.sleep(0.5)
+        await loop.run_in_executor(None, functools.partial(ser.write, VTOW['front_ringTOunlock']))
+        await asyncio.sleep(3)  # 5초 대기
+        await loop.run_in_executor(None, functools.partial(ser.write, VTOW['avTOidle']))
 
     elif lock_name == "front_stop":
+        _LOGGER.info(f"Recieved Front_stop command. Send in asyncio write.")
         await loop.run_in_executor(None, functools.partial(ser.write, VTOW['avTOidle']))
 
     await loop.run_in_executor(None, ser.flush)  # 전송된 데이터를 즉시 시리얼 포트로 밀어내기
@@ -177,7 +187,7 @@ async def async_ev_call(hass: HomeAssistant):
     """Handle the elevator call and update the sensor states asynchronously using asyncio TCP connection."""
     try:
         reader, writer = await asyncio.open_connection(SERVER_IP, SERVER_PORT)
-        _LOGGER.info(f"Connected to {SERVER_IP}:{SERVER_PORT}")
+        #_LOGGER.info(f"Connected to {SERVER_IP}:{SERVER_PORT}")
 
         # Send binary data
         writer.write(BINARY_DATA)
@@ -197,27 +207,27 @@ async def async_ev_call(hass: HomeAssistant):
                            .replace(b'\xd8\xc5\xac\xb9\xa0\xbct\xc70\xd1 Q\xc7\xf5\xb2', b'\xec\x97\x98\xeb\xa6\xac\xeb\xb2\xa0\xec\x9d\xb4\xed\x84\xb0 \xec\x9d\x91\xeb\x8b\xb5')
 
             try:
-                root = ET.fromstring(packet)
-                service = root.find('body').find('device').find('service')
-                state = 'ev_1' if '27^' in service.find('explicit').text else 'ev_2'
-                direction = service.find('direction').text
-                floor = service.find('explicit').text.split('^')[1]
+                packet = packet.decode()
+                if '<explicit>' in packet and '</explicit>' in packet and '<direction>' in packet and '</direction>' in packet:
+                    state = 'ev_1' if '27^' in packet.split('<explicit>')[1].split('</explicit>')[0] else 'ev_2'
+                    direction = packet.split('<direction>')[1].split('</direction>')[0]
+                    floor = packet.split('<explicit>')[1].split('</explicit>')[0].split('^')[1]
 
-                status = {'state': direction, 'floor': floor}
-                _LOGGER.info(f"Received elevator status: {status}")
+                    status = {'state': direction, 'floor': floor}
+                    _LOGGER.info(f"Received elevator status: {status}")
 
-                # 비동기 dispatcher로 이벤트 전송
-                async_dispatcher_send(hass, 'ev_update_sensor', f'{state}_state', direction)    
-                async_dispatcher_send(hass, 'ev_update_sensor', f'{state}_floor', f'{floor}층')    
+                    # 비동기 dispatcher로 이벤트 전송
+                    async_dispatcher_send(hass, 'ev_update_sensor', f'{state}_state', direction)    
+                    async_dispatcher_send(hass, 'ev_update_sensor', f'{state}_floor', f'{floor}층')    
 
-                if direction == 'arrive':
-                    await asyncio.sleep(5)
-                    async_dispatcher_send(hass, 'ev_update_sensor', 'ev_1_state', 'unknown')    
-                    async_dispatcher_send(hass, 'ev_update_sensor', 'ev_1_floor', 'unknown')    
-                    async_dispatcher_send(hass, 'ev_update_sensor', 'ev_2_state', 'unknown')    
-                    async_dispatcher_send(hass, 'ev_update_sensor', 'ev_2_floor', 'unknown')      
-            except ET.ParseError:
-                _LOGGER.error("Failed to parse the received XML data.")
+                    if direction == 'arrive':
+                        await asyncio.sleep(5)
+                        async_dispatcher_send(hass, 'ev_update_sensor', 'ev_1_state', 'unknown')    
+                        async_dispatcher_send(hass, 'ev_update_sensor', 'ev_1_floor', 'unknown')    
+                        async_dispatcher_send(hass, 'ev_update_sensor', 'ev_2_state', 'unknown')    
+                        async_dispatcher_send(hass, 'ev_update_sensor', 'ev_2_floor', 'unknown')      
+            except:
+                _LOGGER.error(f"Failed to parse {packet}")
 
         writer.close()
         await writer.wait_closed()
