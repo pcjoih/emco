@@ -42,6 +42,6 @@ class EvSensor(SensorEntity):
     async def _async_update_sensor(self, name, state):
         """Asynchronously handle updates from the dispatcher."""
         if self._name == name:
-            _LOGGER.info(f"Updating sensor {self._name}: {state}")
+            #_LOGGER.info(f"Updating sensor {self._name}: {state}")
             self._state = state
             self.async_write_ha_state()
