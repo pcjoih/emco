@@ -46,7 +46,7 @@ class SerialBinarySensor(BinarySensorEntity):
     def set_state(self, state: bool):
         """Set the state of the binary sensor."""
         _LOGGER.info(
-            f"Setting {self._name} sensor state to {'on' if state else 'off'}."
+            f"Setting {self._name} sensor state {self._state} to {'on' if state else 'off'}."
         )
         self._state = state
         # 상태가 변경될 때, Home Assistant에 상태 업데이트를 알림
